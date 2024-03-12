@@ -88,9 +88,64 @@ typedef struct {
     uint8_t Device_Capability[4096-16-16*3];  // Replace MAX_DEVICE_CAPABILITY_SIZE
 } MemoryDeviceRegisters;
 
+typedef struct mailbox_capabilities_register {
+    uint32_t payload_size : 4;
+    uint32_t mb_doorbell_int_capable : 1;
+    uint32_t background_command_complete_interupt_capable : 1;
+    uint32_t intr_msg_number : 4;
+    uint32_t mb_ready_time :8;
+    uint32_t type : 4;
+    uint32_t reserved : 10;
+} mailbox_capabilities_register;
+
+typedef struct mailbox_control_register {
+    uint32_t doorbell : 1;       // 1-bit field named 'doorbell' 
+    uint32_t doorbell_interrupt_mode : 1;  // 1-bit field named 'doorbell_interrupt_mode'
+    uint32_t background_command_complete_interupt : 1;  // 1-bit field named 'background_command_complete_interupt'
+    uint32_t reserved : 29;      // Reserved bits
+} mailbox_control_register;
+
+typedef struct mailbox_command_register {
+    uint64_t opcode :16;
+    uint64_t payload_size: 10;
+    uint64_t reserved :38;
+}mailbox_command_register;
+
+typedef struct mailbox_status_register {
+    uint64_t background_operation_status :1;
+    uint64_t reserved :31;
+    uint64_t return_code :16;
+    uint64_t vendor_specific_ext_status :16;
+}mailbox_status_register;
+
+typedef struct mailbox_background_command_status_register {
+    uint64_t last_opcode :16;
+    uint64_t percent_complete :7;
+    uint64_t reserved :9;
+    uint64_t return_code :16;
+    uint64_t vendor_specific_ext_status :16;
+}mailbox_background_command_status_register;
+
+typedef struct mailbox_registers {
+    mailbox_capabilities_register MB_Capabilities;
+    mailbox_control_register MB_Control;
+    mailbox_command_register Command_Register;
+    mailbox_status_register MB_Status;
+    mailbox_background_command_status_register Background_Command_Status_Register;
+    uint32_t Commmand_Payload_Registers[512]; 
+} mailbox_registers;
 
 void print_config_header(struct pci_dev *pdev);
 void print_extended_config(struct pci_dev *pdev);
 uint16_t get_dvsec_register_locator_offset(struct pci_dev *pdev);
 uint32_t get_mailbox_base_address (struct pci_dev *pdev);
 uint32_t get_register_block_number_from_header(registerLocator *register_locator);
+int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command);
+bool check_mailbox_ready(mailbox_registers *mb_regs);
+
+void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command);
+void mailbox_clear_payload_length(mailbox_registers *mb_regs);
+void mailbox_set_payload_length(mailbox_registers *mb_regs, uint16_t payload_size);
+void mailbox_set_doorbell(mailbox_registers *mb_regs);
+
+uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs);

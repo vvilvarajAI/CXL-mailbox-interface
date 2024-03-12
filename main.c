@@ -3,6 +3,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <pci/pci.h>
+#include <stdbool.h>
+#include <string.h>
 #include "main.h"
 
 #define CXL_Vendor_ID 0x1E98
@@ -64,6 +66,7 @@ int main(int argc, char *argv[])
     uint32_t mailbox_base_address = get_mailbox_base_address(pdev);
     printf("Mailbox Base Address: 0x%08x\n", mailbox_base_address);
 
+    int ret = send_mailbox_command(mailbox_base_address, 0x300);
     pci_cleanup(pacc);
     return 0;
 }
@@ -204,4 +207,89 @@ uint32_t get_mailbox_base_address (struct pci_dev *pdev)
 uint32_t get_register_block_number_from_header(registerLocator *register_locator)
 {
     return ((register_locator->PCIE_ext_cap_hdr.DVSEC_hdr1.DVSEC_Length -10-2)/8);
+}
+
+int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command)
+{
+    int fd = open("/dev/mem", O_RDWR | O_DSYNC);
+    if (fd == -1) {
+        perror("Error opening /dev/mem");
+        exit(1);
+    }
+    uint32_t aligned_addr = mailbox_base_address & 0xFFFFF000;
+    uint32_t mailbox_offset = mailbox_base_address - aligned_addr;
+    void *map_base = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, aligned_addr);
+    if (map_base == MAP_FAILED) {
+        perror("Error mapping memory");
+        close(fd);
+        exit(1);
+    }
+
+    mailbox_registers *mb_regs = (mailbox_registers *)(map_base+mailbox_offset);
+    if(check_mailbox_ready(mb_regs)){
+        printf("Mailbox is ready\n");
+        mailbox_write_command(mb_regs, command);
+        mailbox_clear_payload_length(mb_regs);
+        mailbox_set_payload_length(mb_regs, 0x0);
+        mailbox_set_doorbell(mb_regs);
+    }
+    else{
+        printf("Mailbox is not ready\n");
+        goto close_mmap;
+    }
+
+    for(int j=0;j<100;j++){
+        if(check_mailbox_ready(mb_regs)){
+            printf("Mailbox is ready\n");
+            uint16_t payload_length = mailbox_get_payload_length(mb_regs);
+            printf("Payload Length: 0x%04x\n", payload_length);
+            if(payload_length != 0){
+                printf("Payload: 0x%08x\n", mb_regs->Commmand_Payload_Registers[0]);
+            }
+            break;
+        }
+        else{
+            printf("Mailbox is not ready\n");
+            usleep(100000);
+        }
+    }
+  
+close_mmap:
+    if (munmap(map_base, 4096) == -1) {
+        perror("Error unmapping memory");
+        close(fd);
+        exit(1);
+    }
+
+    close(fd);
+    return 0;
+}
+bool check_mailbox_ready(mailbox_registers *mb_regs)
+{
+    return mb_regs->MB_Control.doorbell == 0;
+}
+
+void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command)
+{
+    mb_regs->Command_Register.opcode = command;
+}
+
+void mailbox_clear_payload_length(mailbox_registers *mb_regs)
+{
+    mb_regs->Command_Register.payload_size = 0;
+}
+
+void mailbox_set_payload_length(mailbox_registers *mb_regs, uint16_t payload_size)
+{
+    mb_regs->Command_Register.payload_size = payload_size;
+}
+
+void mailbox_set_doorbell(mailbox_registers *mb_regs)
+{
+    mb_regs->MB_Control.doorbell = 1;
+}
+
+uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs)
+{
+    return mb_regs->Command_Register.payload_size;
 }
