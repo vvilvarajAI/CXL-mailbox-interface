@@ -218,14 +218,15 @@ int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command)
     }
     uint32_t aligned_addr = mailbox_base_address & 0xFFFFF000;
     uint32_t mailbox_offset = mailbox_base_address - aligned_addr;
-    void *map_base = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, aligned_addr);
+    void *map_base = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, aligned_addr);
     if (map_base == MAP_FAILED) {
         perror("Error mapping memory");
         close(fd);
         exit(1);
     }
-
-    mailbox_registers *mb_regs = (mailbox_registers *)(map_base+mailbox_offset);
+    uint8_t *mailbox_base = (uint8_t *)map_base + (uint8_t)mailbox_offset;
+    mailbox_registers *mb_regs = (mailbox_registers *)(mailbox_base);
+    printf("Mailbox Base: 0x%08x\n", mailbox_base);
     if(check_mailbox_ready(mb_regs)){
         printf("Mailbox is ready\n");
         mailbox_write_command(mb_regs, command);
