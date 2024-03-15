@@ -10,6 +10,17 @@
 #define CXL_Vendor_ID 0x1E98
 #define CXL_DEVICE_REGISTERS_ID 0x03
 
+void *my_memcpy(void *dest, const void *src, size_t n) {
+    char *d = (char *)dest;
+    const char *s = (char *)src;
+
+    for (size_t i = 0; i < n; i++) {
+        *d++ = *s++;
+    }
+
+    return dest;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 2)
@@ -179,10 +190,10 @@ uint32_t get_mailbox_base_address (struct pci_dev *pdev)
         close(fd);
         exit(1);
     }
-    memcpy(&dev_cap_arr_reg, map_base, sizeof(dev_cap_arr_reg));
+    my_memcpy(&dev_cap_arr_reg, map_base, sizeof(dev_cap_arr_reg));
     printf("Device Capabilities Array Register: Capability_ID: 0x%04x, Version: 0x%02x, Capabilities_Count: 0x%04x\n", dev_cap_arr_reg.Capability_ID, dev_cap_arr_reg.Version, dev_cap_arr_reg.Capabilities_Count);
     if(dev_cap_arr_reg.Capability_ID == 0x0){
-        memcpy(&mem_dev_reg, map_base, sizeof(mem_dev_reg));
+        my_memcpy(&mem_dev_reg, map_base, sizeof(mem_dev_reg));
         for(int i=0;i<3;i++){
             printf("Device Capability Header %d: Capability_ID: 0x%04x, Version: 0x%02x, Offset: 0x%08x, Length: 0x%08x\n", i, mem_dev_reg.Device_Capability_Header[i].Capability_ID, mem_dev_reg.Device_Capability_Header[i].Version, mem_dev_reg.Device_Capability_Header[i].Offset, mem_dev_reg.Device_Capability_Header[i].Length);
             if(mem_dev_reg.Device_Capability_Header[i].Capability_ID == 0x2){
@@ -274,37 +285,37 @@ bool check_mailbox_ready(mailbox_registers *mb_regs)
 void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command)
 {
     mailbox_command_register cmd_reg;
-    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
     printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.opcode = command;
-    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_clear_payload_length(mailbox_registers *mb_regs)
 {
     mailbox_command_register cmd_reg;
-    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
     printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.payload_size = 0;
-    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_set_payload_length(mailbox_registers *mb_regs, uint16_t payload_size)
 {
     mailbox_command_register cmd_reg;
-    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
     printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.payload_size = payload_size;
-    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_set_doorbell(mailbox_registers *mb_regs)
 {
     mailbox_control_register ctrl_reg;
-    memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
+    my_memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
     printf("%s:Control Register: Doorbell: 0x%04x\n", __func__,ctrl_reg.doorbell);
     ctrl_reg.doorbell = 1;
-    memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
+    my_memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
 }
 
 uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs)
@@ -315,10 +326,10 @@ uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs)
 void mailbox_clear_doorbell(mailbox_registers *mb_regs)
 {
     mailbox_control_register ctrl_reg;
-    memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
+    my_memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
     printf("%s:Control Register: Doorbell: 0x%04x\n", __func__,ctrl_reg.doorbell);
     ctrl_reg.doorbell = 0;
-    memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
+    my_memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
 }
 
 void read_payload(mailbox_registers *mb_regs)
@@ -329,7 +340,7 @@ void read_payload(mailbox_registers *mb_regs)
 uint16_t mailbox_status_return_code(mailbox_registers *mb_regs)
 {
     mailbox_status_register status_reg;
-    memcpy(&status_reg, &mb_regs->MB_Status, sizeof(status_reg));
+    my_memcpy(&status_reg, &mb_regs->MB_Status, sizeof(status_reg));
     printf("Status Register: Background Operation Status: 0x%04x, Return Code: 0x%04x, Vendor Specific Ext Status: 0x%04x\n", status_reg.background_operation_status, status_reg.return_code, status_reg.vendor_specific_ext_status);
     return status_reg.return_code;
 }
