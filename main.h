@@ -149,3 +149,4 @@ void mailbox_set_payload_length(mailbox_registers *mb_regs, uint16_t payload_siz
 void mailbox_set_doorbell(mailbox_registers *mb_regs);
 
 uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs);
+uint16_t mailbox_status_return_code(mailbox_registers *mb_regs);

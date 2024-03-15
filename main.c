@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     uint32_t mailbox_base_address = get_mailbox_base_address(pdev);
     printf("Mailbox Base Address: 0x%08x\n", mailbox_base_address);
 
-    int ret = send_mailbox_command(mailbox_base_address, 0x300);
+    int ret = send_mailbox_command(mailbox_base_address, 0x300); //0x300 is GET_TIMESTAMP command
     pci_cleanup(pacc);
     return 0;
 }
@@ -245,8 +245,9 @@ int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command)
             uint16_t payload_length = mailbox_get_payload_length(mb_regs);
             printf("Payload Length: 0x%04x\n", payload_length);
             if(payload_length != 0){
-                printf("Payload: 0x%08x\n", mb_regs->Commmand_Payload_Registers[0]);
+                read_payload(mb_regs);
             }
+            printf("mailbox status return code = 0x%X\n", mailbox_status_return_code(mb_regs));
             break;
         }
         else{
@@ -272,25 +273,63 @@ bool check_mailbox_ready(mailbox_registers *mb_regs)
 
 void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command)
 {
-    mb_regs->Command_Register.opcode = command;
+    mailbox_command_register cmd_reg;
+    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
+    cmd_reg.opcode = command;
+    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_clear_payload_length(mailbox_registers *mb_regs)
 {
-    mb_regs->Command_Register.payload_size = 0;
+    mailbox_command_register cmd_reg;
+    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
+    cmd_reg.payload_size = 0;
+    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_set_payload_length(mailbox_registers *mb_regs, uint16_t payload_size)
 {
-    mb_regs->Command_Register.payload_size = payload_size;
+    mailbox_command_register cmd_reg;
+    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
+    cmd_reg.payload_size = payload_size;
+    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_set_doorbell(mailbox_registers *mb_regs)
 {
-    mb_regs->MB_Control.doorbell = 1;
+    mailbox_control_register ctrl_reg;
+    memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
+    printf("%s:Control Register: Doorbell: 0x%04x\n", __func__,ctrl_reg.doorbell);
+    ctrl_reg.doorbell = 1;
+    memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
 }
 
 uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs)
 {
     return mb_regs->Command_Register.payload_size;
+}
+
+void mailbox_clear_doorbell(mailbox_registers *mb_regs)
+{
+    mailbox_control_register ctrl_reg;
+    memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
+    printf("%s:Control Register: Doorbell: 0x%04x\n", __func__,ctrl_reg.doorbell);
+    ctrl_reg.doorbell = 0;
+    memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
+}
+
+void read_payload(mailbox_registers *mb_regs)
+{   for(int i=0;i<mb_regs->Command_Register.payload_size;i++)
+    printf("Payload: 0x%08x\n", mb_regs->Commmand_Payload_Registers[i]);
+}
+
+uint16_t mailbox_status_return_code(mailbox_registers *mb_regs)
+{
+    mailbox_status_register status_reg;
+    memcpy(&status_reg, &mb_regs->MB_Status, sizeof(status_reg));
+    printf("Status Register: Background Operation Status: 0x%04x, Return Code: 0x%04x, Vendor Specific Ext Status: 0x%04x\n", status_reg.background_operation_status, status_reg.return_code, status_reg.vendor_specific_ext_status);
+    return status_reg.return_code;
 }
