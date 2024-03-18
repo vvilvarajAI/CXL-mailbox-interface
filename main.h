@@ -135,14 +135,42 @@ typedef struct mailbox_registers {
     uint32_t Commmand_Payload_Registers[512]; 
 } mailbox_registers;
 
+enum mailbox_ret_codes{
+    SUCCESS                     = 0x0000,
+    BACKGROUND_COMMAND_STARTED  = 0x0001,
+    INVALID_INPUT               = 0x0002,
+    UNSUPPORTED                 = 0x0003,
+    INTERNAL_ERROR              = 0x0004,
+    RETRY_REQUIRED              = 0x0005,
+    BUSY                        = 0x0006,
+    MEDIA_DISABLED              = 0x0007,
+    FW_TRANSFER_IN_PROGRESS     = 0x0008,
+    FW_TRANSFER_OUT_OF_ORDER    = 0x0009,
+    FW_AUTHENTICATION_FAILED    = 0x000A,
+    INVALID_SLOT                = 0x000B,
+    ACTIVATION_FAILED_ROLLBACK  = 0x000C,
+    ACTIVATION_FAILED_RESET     = 0x000D,
+    INVALID_HANDLE              = 0x000E,
+    INVALID_PHYSICAL_ADDRESS    = 0x000F,
+    INJECT_POISON_LIMIT_REACHED = 0x0010,
+    PERMANENT_MEDIA_FAILURE     = 0x0011,
+    ABORTED                     = 0x0012,
+    INVALID_SECURITY_STATE      = 0x0013,
+    INCORRECT_PASSPHRASE        = 0x0014,
+    UNSUPPORTED_MAILBOX         = 0x0015,
+    INVALID_PAYLOAD_LENGTH      = 0x0016
+};
+
 void print_config_header(struct pci_dev *pdev);
+void cxl_mailbox_get_timestamp(uint32_t mailbox_base_address);
 void print_extended_config(struct pci_dev *pdev);
 uint16_t get_dvsec_register_locator_offset(struct pci_dev *pdev);
 uint32_t get_mailbox_base_address (struct pci_dev *pdev);
 uint32_t get_register_block_number_from_header(registerLocator *register_locator);
-int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command);
+int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command,uint16_t *payload_size, uint32_t *payload, uint16_t *ret_code);
 bool check_mailbox_ready(mailbox_registers *mb_regs);
-
+void mailbox_write_payload(mailbox_registers *mb_regs, uint16_t payload_length, uint32_t *payload);
+void read_payload(mailbox_registers *mb_regs, uint16_t payload_length, uint32_t *payload);
 void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command);
 void mailbox_clear_payload_length(mailbox_registers *mb_regs);
 void mailbox_set_payload_length(mailbox_registers *mb_regs, uint16_t payload_size);

@@ -5,10 +5,13 @@
 #include <pci/pci.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 #include "main.h"
 
 #define CXL_Vendor_ID 0x1E98
 #define CXL_DEVICE_REGISTERS_ID 0x03
+
+#define CXL_TIMESTAMP_SIZE 0x8 // expressed in bytes
 
 int main(int argc, char *argv[])
 {
@@ -66,9 +69,116 @@ int main(int argc, char *argv[])
     uint32_t mailbox_base_address = get_mailbox_base_address(pdev);
     printf("Mailbox Base Address: 0x%08x\n", mailbox_base_address);
 
-    int ret = send_mailbox_command(mailbox_base_address, 0x300); //0x300 is GET_TIMESTAMP command
+    cxl_mailbox_clear_timestamp(mailbox_base_address);
+    cxl_mailbox_get_timestamp(mailbox_base_address);
     pci_cleanup(pacc);
     return 0;
+}
+
+void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_size)
+{
+    printf("Timestamp: 0x%08x%08x\n", payload[1], payload[0]);
+    time_t timestamp = (time_t)payload[1];
+    struct tm *timeinfo = localtime(&timestamp);
+    printf("Timestamp: %s", asctime(timeinfo));
+}
+
+print_ret_code(uint16_t ret_code) {
+    switch (ret_code)
+    {
+    case SUCCESS:
+        printf("Success\n");
+        break;
+    case BACKGROUND_COMMAND_STARTED:
+        printf("Background Command Started\n");
+        break;
+    case INVALID_INPUT:
+        printf("Invalid Input\n");
+        break;
+    case UNSUPPORTED:
+        printf("Unsupported\n");
+        break;
+    case INTERNAL_ERROR:
+        printf("Internal Error\n");
+        break;
+    case RETRY_REQUIRED:
+        printf("Retry Required\n");
+        break;
+    case BUSY:
+        printf("Busy\n");
+        break;
+    case MEDIA_DISABLED:
+        printf("Media Disabled\n");
+        break;
+    case FW_TRANSFER_IN_PROGRESS:
+        printf("FW Transfer In Progress\n");
+        break;
+    case FW_TRANSFER_OUT_OF_ORDER:
+        printf("FW Transfer Out of Order\n");
+        break;
+    case FW_AUTHENTICATION_FAILED:
+        printf("FW Authentication Failed\n");
+        break;
+    case INVALID_SLOT:
+        printf("Invalid Slot\n");
+        break;
+    case ACTIVATION_FAILED_ROLLBACK:
+        printf("Activation Failed Rollback\n");
+        break;
+    case ACTIVATION_FAILED_RESET:
+        printf("Activation Failed Reset\n");
+        break;
+    case INVALID_HANDLE:
+        printf("Invalid Handle\n");
+        break;
+    case INVALID_PHYSICAL_ADDRESS:
+        printf("Invalid Physical Address\n");
+        break;
+    case INJECT_POISON_LIMIT_REACHED:
+        printf("Inject Poison Limit Reached\n");
+        break;
+    case PERMANENT_MEDIA_FAILURE:
+        printf("Permanent Media Failure\n");
+        break;
+    case ABORTED:
+        printf("Aborted\n");
+        break;
+    case INVALID_SECURITY_STATE:
+        printf("Invalid Security State\n");
+        break;
+    case INCORRECT_PASSPHRASE:
+        printf("Incorrect Passphrase\n");
+        break;
+    case UNSUPPORTED_MAILBOX:
+        printf("Unsupported Mailbox\n");
+        break;
+    case INVALID_PAYLOAD_LENGTH:
+        printf("Invalid Payload Length\n");
+        break;
+    default:
+        printf("Unknown Return Code\n");
+        break;
+    }
+
+}
+void cxl_mailbox_get_timestamp(uint32_t mailbox_base_address)
+{
+    uint32_t *payload = (uint32_t *)malloc(CXL_TIMESTAMP_SIZE);
+    uint16_t payload_size = CXL_TIMESTAMP_SIZE;
+    uint16_t ret_code =0;
+
+    int ret = send_mailbox_command(mailbox_base_address, 0x300, &payload_size, payload, &ret_code); // 0x300 is GET_TIMESTAMP command
+    print_ret_code(ret_code);
+    convert_timestamp_to_human_readable(payload,    payload_size) ;
+}
+
+void cxl_mailbox_clear_timestamp(uint32_t mailbox_base_address)
+{
+    uint32_t *payload = NULL;
+    uint16_t payload_size =NULL;
+    uint16_t ret_code =0;
+    int ret = send_mailbox_command(mailbox_base_address, 0x301, payload_size, payload, &ret_code); // 0x301 is SET_TIMESTAMP command
+    print_ret_code(ret_code);
 }
 
 void print_config_header(struct pci_dev *pdev)
@@ -173,7 +283,7 @@ uint32_t get_mailbox_base_address (struct pci_dev *pdev)
         exit(1);
     }
 
-    void *map_base = mmap(NULL, 0x1000, PROT_READ, MAP_SHARED, fd, base_address);
+    void *map_base = mmap(NULL, 0x1000, PROT_READ, MAP_PRIVATE, fd, base_address);
     if (map_base == MAP_FAILED) {
         perror("Error mapping memory");
         close(fd);
@@ -209,7 +319,7 @@ uint32_t get_register_block_number_from_header(registerLocator *register_locator
     return ((register_locator->PCIE_ext_cap_hdr.DVSEC_hdr1.DVSEC_Length -10-2)/8);
 }
 
-int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command)
+int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command, uint16_t *payload_size, uint32_t *payload, uint16_t *ret_code)
 {
     int fd = open("/dev/mem", O_RDWR | O_DSYNC);
     if (fd == -1) {
@@ -231,7 +341,14 @@ int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command)
         printf("Mailbox is ready\n");
         mailbox_write_command(mb_regs, command);
         mailbox_clear_payload_length(mb_regs);
-        mailbox_set_payload_length(mb_regs, 0x0);
+        if(payload_size !=NULL){
+            mailbox_set_payload_length(mb_regs, *payload_size);
+            mailbox_write_payload(mb_regs, *payload_size, payload);
+        }
+        else{
+            mailbox_set_payload_length(mb_regs, 0);
+        }
+        
         mailbox_set_doorbell(mb_regs);
     }
     else{
@@ -244,10 +361,16 @@ int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command)
             printf("Mailbox is ready\n");
             uint16_t payload_length = mailbox_get_payload_length(mb_regs);
             printf("Payload Length: 0x%04x\n", payload_length);
-            if(payload_length != 0){
-                read_payload(mb_regs);
+            if(payload_length != 0 ){
+                if(payload == NULL || *payload_size == 0){
+                    *payload_size = payload_length;
+                    payload = (uint32_t *)malloc(payload_size);
+                }
+                read_payload(mb_regs, payload_length, payload);
             }
-            printf("mailbox status return code = 0x%X\n", mailbox_status_return_code(mb_regs));
+            *ret_code = mailbox_status_return_code(mb_regs);
+            printf("mailbox status return code = 0x%X\n", ret_code);
+            
             break;
         }
         else{
@@ -321,9 +444,20 @@ void mailbox_clear_doorbell(mailbox_registers *mb_regs)
     memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
 }
 
-void read_payload(mailbox_registers *mb_regs)
-{   for(int i=0;i<mb_regs->Command_Register.payload_size;i++)
-    printf("Payload: 0x%08x\n", mb_regs->Commmand_Payload_Registers[i]);
+void read_payload(mailbox_registers *mb_regs, uint16_t payload_length, uint32_t *payload)
+{
+    for(int i=0;i<payload_length;i++){
+        payload[i] = mb_regs->Commmand_Payload_Registers[i];
+        printf("%s:Payload: 0x%08x\n", __func__,mb_regs->Commmand_Payload_Registers[i]);
+    }
+}
+
+void mailbox_write_payload(mailbox_registers *mb_regs, uint16_t payload_length, uint32_t *payload)
+{
+    for(int i=0;i<payload_length;i++){
+        mb_regs->Commmand_Payload_Registers[i] = payload[i];
+        printf("%s:Payload: 0x%08x\n",__func__, mb_regs->Commmand_Payload_Registers[i]);
+    }
 }
 
 uint16_t mailbox_status_return_code(mailbox_registers *mb_regs)
