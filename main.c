@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "main.h"
-
+//#define DEBUG
 #define CXL_Vendor_ID 0x1E98
 #define CXL_DEVICE_REGISTERS_ID 0x03
 
@@ -67,15 +67,22 @@ int main(int argc, char *argv[])
     }
     printf("Device: Vendor 0x%04x, Device 0x%04x\n", pdev->vendor_id, pdev->device_id);
     printf("Device Class: 0x%04x\n", pdev->device_class);
+    printf("Base Address 0: 0x%x\n", pdev->base_addr[0]);
+    printf("Base Address 1: 0x%x\n", pdev->base_addr[1]);
+    printf("Base Address 2: 0x%x\n", pdev->base_addr[2]);
+    printf("Base Address 3: 0x%x\n", pdev->base_addr[3]);
+    printf("Base Address 4: 0x%x\n", pdev->base_addr[4]);
+    printf("Base Address 5: 0x%x\n", pdev->base_addr[5]);
+
     print_config_header(pdev);
 #ifdef DEBUG
     print_extended_config(pdev);
 #endif
     uint16_t register_locator_offset = get_dvsec_register_locator_offset(pdev);
-    printf("register Locator header Offset: 0x%04x\n", register_locator_offset);
+    printf("%s:register Locator header Offset: 0x%04x\n", __func__,register_locator_offset);
 
-    uint32_t mailbox_base_address = get_mailbox_base_address(pdev);
-    printf("Mailbox Base Address: 0x%08x\n", mailbox_base_address);
+    uint64_t mailbox_base_address = get_mailbox_base_address(pdev);
+    printf("%s:Mailbox Base Address: 0x%llx\n",__func__, mailbox_base_address);
 
     int ret = send_mailbox_command(mailbox_base_address, 0x300); //0x300 is GET_TIMESTAMP command
     pci_cleanup(pacc);
@@ -87,6 +94,14 @@ void print_config_header(struct pci_dev *pdev)
     printf("Configuration Header:\n");
     PCIE_CONFIG_HDR pcie_config_hdr;
     pci_read_block(pdev, 0, &pcie_config_hdr, sizeof(pcie_config_hdr));
+    for (int i = 0; i < sizeof(pcie_config_hdr); i++)
+    {
+        printf("%02X ", *((uint8_t*)&pcie_config_hdr + i));
+        if ((i + 1) % 16 == 0)
+        {
+            printf("\n");
+        }
+    }
     printf("Vendor ID: 0x%04x\n", pcie_config_hdr.Vendor_ID);
     printf("Device ID: 0x%04x\n", pcie_config_hdr.Device_ID);
     printf("Command: 0x%04x\n", pcie_config_hdr.Command);
@@ -144,10 +159,10 @@ uint16_t get_dvsec_register_locator_offset(struct pci_dev *pdev)
     return 0;
 }
 
-uint32_t get_mailbox_base_address (struct pci_dev *pdev)
+uint64_t get_mailbox_base_address (struct pci_dev *pdev)
 {
-    uint32_t mailbox_base_address = 0;
-    uint32_t base_address = 0;
+    uint64_t mailbox_base_address = 0;
+    uint64_t base_address = 0;
     uint16_t register_locator_offset = get_dvsec_register_locator_offset(pdev);
     PCIE_CONFIG_HDR pcie_config_hdr;
     pci_read_block(pdev, 0, &pcie_config_hdr, sizeof(pcie_config_hdr));
@@ -168,11 +183,34 @@ uint32_t get_mailbox_base_address (struct pci_dev *pdev)
         printf("Register Block %d: Register_Block_Offset_Low: 0x%04x\n", i, register_locator.Register_Block[i].Register_Offset_Low.Register_Block_Offset_Low);
         printf("Register Block %d: Register_Block_Offset_High: 0x%08x\n",i,  register_locator.Register_Block[i].Register_Offset_High.Register_Block_Offset_High);
         
-        base_address = pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR].Base_Address << 4 |
+        if(pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR].Locatable == 0x2){
+            printf("register_locator.Register_Block[%d].Register_Offset_Low.Register_BIR=0x%x\n",i, register_locator.Register_Block[i].Register_Offset_Low.Register_BIR);
+            printf("Base Address  BIR: 0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR].Base_Address);
+            printf("Base Address  BIR+1:  0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Base_Address);
+            printf("Base Address  BIR+1 Prefech:  0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Prefetchable);
+            printf("Base Address  BIR+1 Locatable:  0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Locatable);
+            printf("Base Address  BIR+1 Region Type:  0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Region_Type);
+            base_address = (pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Base_Address << 4 | 
+                                            pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Prefetchable << 3  | 
+                                            pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Locatable << 2 |
+                                            pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Region_Type ) << 32;
+           // printf("Base Address before left shift: 0x%x\n", (long)base_address);
+            base_address <<= 32;
+            printf("Base Address: 0x%llX\n", base_address);
+        }
+        base_address = base_address + (pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR].Base_Address << 4 |
                                 register_locator.Register_Block[i].Register_Offset_Low.Register_Block_Offset_Low << 16 |
-                                register_locator.Register_Block[i].Register_Offset_High.Register_Block_Offset_High << 32;
+                                register_locator.Register_Block[i].Register_Offset_High.Register_Block_Offset_High << 32)   ;
+
         
-        printf("Register Block %d: Base Address: 0x%08x\n", i, base_address);
+        
+        printf("Register Block %d: Base Address: 0x%llx\n", i, base_address);
+        printf("sizeof uint64_t: %d\n", sizeof(uint64_t));
+        printf("sizeof uint32_t: %d\n", sizeof(uint32_t));
+        printf("sizeof uint16_t: %d\n", sizeof(uint16_t));
+        printf("sizeof uint8_t: %d\n", sizeof(uint8_t));
+        printf("sizeof long: %d\n", sizeof(long));
+
         }
     }
     DEVICE_CAPABILITIES_ARRAY_REGISTER dev_cap_arr_reg;
@@ -200,6 +238,7 @@ uint32_t get_mailbox_base_address (struct pci_dev *pdev)
                 printf("Offset = 0x%08x\n", mem_dev_reg.Device_Capability_Header[i].Offset);
                 printf("Length = 0x%08x\n", mem_dev_reg.Device_Capability_Header[i].Length);
                 mailbox_base_address = base_address + mem_dev_reg.Device_Capability_Header[i].Offset;
+                printf("Mailbox Base Address: 0x%0llx\n", mailbox_base_address);
                 break;
             }
         }
@@ -220,15 +259,16 @@ uint32_t get_register_block_number_from_header(registerLocator *register_locator
     return ((register_locator->PCIE_ext_cap_hdr.DVSEC_hdr1.DVSEC_Length -10-2)/8);
 }
 
-int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command)
+int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command)
 {
     int fd = open("/dev/mem", O_RDWR | O_DSYNC);
     if (fd == -1) {
         perror("Error opening /dev/mem");
         exit(1);
     }
-    uint32_t aligned_addr = mailbox_base_address & 0xFFFFF000;
-    uint32_t mailbox_offset = mailbox_base_address - aligned_addr;
+    uint64_t aligned_addr = mailbox_base_address & 0xFFFFFFFFFFFFF000;
+    uint64_t mailbox_offset = mailbox_base_address - aligned_addr;
+    printf("aligned_addr: 0x%llX\n", aligned_addr);
     void *map_base = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, aligned_addr);
     if (map_base == MAP_FAILED) {
         perror("Error mapping memory");
@@ -237,7 +277,7 @@ int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command)
     }
     uint8_t *mailbox_base = (uint8_t *)map_base + (uint8_t)mailbox_offset;
     mailbox_registers *mb_regs = (mailbox_registers *)(mailbox_base);
-    printf("Mailbox Base: 0x%08x\n", mailbox_base);
+    printf("Mailbox Base: 0x%llX\n", mailbox_base);
     if(check_mailbox_ready(mb_regs)){
         printf("Mailbox is ready\n");
         mailbox_write_command(mb_regs, command);

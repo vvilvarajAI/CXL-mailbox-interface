@@ -138,9 +138,9 @@ typedef struct mailbox_registers {
 void print_config_header(struct pci_dev *pdev);
 void print_extended_config(struct pci_dev *pdev);
 uint16_t get_dvsec_register_locator_offset(struct pci_dev *pdev);
-uint32_t get_mailbox_base_address (struct pci_dev *pdev);
+uint64_t get_mailbox_base_address (struct pci_dev *pdev);
 uint32_t get_register_block_number_from_header(registerLocator *register_locator);
-int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command);
+int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command);
 bool check_mailbox_ready(mailbox_registers *mb_regs);
 
 void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command);
