@@ -22,6 +22,7 @@ void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_siz
 }
 
 print_ret_code(uint16_t ret_code) {
+    printf("Return Code: 0x%04x==", ret_code);
     switch (ret_code)
     {
     case SUCCESS:
@@ -108,6 +109,7 @@ void cxl_mailbox_get_timestamp(uint32_t mailbox_base_address)
     int ret = send_mailbox_command(mailbox_base_address, 0x300, &payload_size, payload, &ret_code); // 0x300 is GET_TIMESTAMP command
     print_ret_code(ret_code);
     convert_timestamp_to_human_readable(payload,    payload_size) ;
+    free(payload);
 }
 
 void cxl_mailbox_clear_timestamp(uint32_t mailbox_base_address)
@@ -307,7 +309,6 @@ int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command, uint16
                 read_payload(mb_regs, payload_length, payload);
             }
             *ret_code = mailbox_status_return_code(mb_regs);
-            printf("mailbox status return code = 0x%X\n", ret_code);
             
             break;
         }

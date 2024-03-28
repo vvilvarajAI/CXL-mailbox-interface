@@ -6,7 +6,7 @@ SRCS := main.c
 OBJS := $(SRCS:.c=.o)
 TARGET := pci_info
 
-LIB_SRCS := cxl_mailbox_lib.c
+LIB_SRCS := cxl_mailbox_lib.c dcd_management.c
 LIB_OBJS := $(LIB_SRCS:.c=.o)
 LIB_TARGET := libmailbox.so
 

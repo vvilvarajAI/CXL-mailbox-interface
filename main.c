@@ -71,6 +71,7 @@ int main(int argc, char *argv[])
 
     cxl_mailbox_clear_timestamp(mailbox_base_address);
     cxl_mailbox_get_timestamp(mailbox_base_address);
+    get_dcd_info(mailbox_base_address);
     pci_cleanup(pacc);
     return 0;
 }
