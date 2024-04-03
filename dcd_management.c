@@ -9,7 +9,7 @@
 #include "cxl_mailbox.h"
 #include "dcd_management.h"
 
-get_dcd_info(uint32_t mailbox_base_address)
+get_dcd_info(uint64_t mailbox_base_address)
 {
     uint32_t *payload = (uint32_t *)malloc(sizeof(dcd_info_response_payload));
     uint16_t payload_size = sizeof(dcd_info_response_payload);

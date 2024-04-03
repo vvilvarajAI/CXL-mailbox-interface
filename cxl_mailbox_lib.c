@@ -13,6 +13,26 @@
 
 #define CXL_TIMESTAMP_SIZE 0x8 // expressed in bytes
 
+void *my_memcpy(void *dest, const void *src, size_t n) {
+    char *d = (char *)dest;
+    const char *s = (char *)src;
+
+    size_t num_words = n / sizeof(int);
+    size_t remaining_bytes = n % sizeof(int);
+
+    for (size_t i = 0; i < num_words; i++) {
+        *((int *)d) = *((int *)s);
+        d += sizeof(int);
+        s += sizeof(int);
+    }
+
+    for (size_t i = 0; i < remaining_bytes; i++) {
+        *d++ = *s++;
+    }
+
+    return dest;
+}
+
 void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_size)
 {
     printf("Timestamp: 0x%08x%08x\n", payload[1], payload[0]);
@@ -100,7 +120,7 @@ print_ret_code(uint16_t ret_code) {
     }
 
 }
-void cxl_mailbox_get_timestamp(uint32_t mailbox_base_address)
+void cxl_mailbox_get_timestamp(uint64_t mailbox_base_address)
 {
     uint32_t *payload = (uint32_t *)malloc(CXL_TIMESTAMP_SIZE);
     uint16_t payload_size = CXL_TIMESTAMP_SIZE;
@@ -112,7 +132,7 @@ void cxl_mailbox_get_timestamp(uint32_t mailbox_base_address)
     free(payload);
 }
 
-void cxl_mailbox_clear_timestamp(uint32_t mailbox_base_address)
+void cxl_mailbox_clear_timestamp(uint64_t mailbox_base_address)
 {
     uint32_t *payload = NULL;
     uint16_t payload_size =NULL;
@@ -183,10 +203,10 @@ uint16_t get_dvsec_register_locator_offset(struct pci_dev *pdev)
     return 0;
 }
 
-uint32_t get_mailbox_base_address (struct pci_dev *pdev)
+uint64_t get_mailbox_base_address (struct pci_dev *pdev)
 {
-    uint32_t mailbox_base_address = 0;
-    uint32_t base_address = 0;
+    uint64_t mailbox_base_address = 0;
+    uint64_t base_address = 0;
     uint16_t register_locator_offset = get_dvsec_register_locator_offset(pdev);
     PCIE_CONFIG_HDR pcie_config_hdr;
     pci_read_block(pdev, 0, &pcie_config_hdr, sizeof(pcie_config_hdr));
@@ -210,8 +230,23 @@ uint32_t get_mailbox_base_address (struct pci_dev *pdev)
         base_address = pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR].Base_Address << 4 |
                                 register_locator.Register_Block[i].Register_Offset_Low.Register_Block_Offset_Low << 16 |
                                 register_locator.Register_Block[i].Register_Offset_High.Register_Block_Offset_High << 32;
-        
-        printf("Register Block %d: Base Address: 0x%08x\n", i, base_address);
+        if(pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR].Locatable == 0x2){
+            printf("register_locator.Register_Block[%d].Register_Offset_Low.Register_BIR=0x%x\n",i, register_locator.Register_Block[i].Register_Offset_Low.Register_BIR);
+            printf("Base Address  BIR: 0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR].Base_Address);
+            printf("Base Address  BIR+1:  0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Base_Address);
+            printf("Base Address  BIR+1 Prefech:  0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Prefetchable);
+            printf("Base Address  BIR+1 Locatable:  0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Locatable);
+            printf("Base Address  BIR+1 Region Type:  0x%x\n", pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Region_Type);
+            base_address = (pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Base_Address << 4 | 
+                                            pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Prefetchable << 3  | 
+                                            pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Locatable << 2 |
+                                            pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR+1].Region_Type ) << 32;
+            base_address <<= 32;
+        }
+        base_address = base_address + (pcie_config_hdr.Base_Address_Registers[register_locator.Register_Block[i].Register_Offset_Low.Register_BIR].Base_Address << 4 |
+                                register_locator.Register_Block[i].Register_Offset_Low.Register_Block_Offset_Low << 16 |
+                                register_locator.Register_Block[i].Register_Offset_High.Register_Block_Offset_High << 32);
+        printf("Register Block %d: Base Address: 0x%llx\n", i, base_address);
         }
     }
     DEVICE_CAPABILITIES_ARRAY_REGISTER dev_cap_arr_reg;
@@ -223,16 +258,16 @@ uint32_t get_mailbox_base_address (struct pci_dev *pdev)
         exit(1);
     }
 
-    void *map_base = mmap(NULL, 0x1000, PROT_READ, MAP_PRIVATE, fd, base_address);
+    void *map_base = mmap(NULL, 0x1000, PROT_READ, MAP_SHARED, fd, base_address);
     if (map_base == MAP_FAILED) {
         perror("Error mapping memory");
         close(fd);
         exit(1);
     }
-    memcpy(&dev_cap_arr_reg, map_base, sizeof(dev_cap_arr_reg));
+    my_memcpy(&dev_cap_arr_reg, map_base, sizeof(dev_cap_arr_reg));
     printf("Device Capabilities Array Register: Capability_ID: 0x%04x, Version: 0x%02x, Capabilities_Count: 0x%04x\n", dev_cap_arr_reg.Capability_ID, dev_cap_arr_reg.Version, dev_cap_arr_reg.Capabilities_Count);
     if(dev_cap_arr_reg.Capability_ID == 0x0){
-        memcpy(&mem_dev_reg, map_base, sizeof(mem_dev_reg));
+        my_memcpy(&mem_dev_reg, map_base, sizeof(mem_dev_reg));
         for(int i=0;i<3;i++){
             printf("Device Capability Header %d: Capability_ID: 0x%04x, Version: 0x%02x, Offset: 0x%08x, Length: 0x%08x\n", i, mem_dev_reg.Device_Capability_Header[i].Capability_ID, mem_dev_reg.Device_Capability_Header[i].Version, mem_dev_reg.Device_Capability_Header[i].Offset, mem_dev_reg.Device_Capability_Header[i].Length);
             if(mem_dev_reg.Device_Capability_Header[i].Capability_ID == 0x2){
@@ -259,15 +294,16 @@ uint32_t get_register_block_number_from_header(registerLocator *register_locator
     return ((register_locator->PCIE_ext_cap_hdr.DVSEC_hdr1.DVSEC_Length -10-2)/8);
 }
 
-int send_mailbox_command(uint32_t mailbox_base_address, uint16_t command, uint16_t *payload_size, uint32_t *payload, uint16_t *ret_code)
+int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16_t *payload_size, uint32_t *payload, uint16_t *ret_code)
 {
     int fd = open("/dev/mem", O_RDWR | O_DSYNC);
     if (fd == -1) {
         perror("Error opening /dev/mem");
         exit(1);
     }
-    uint32_t aligned_addr = mailbox_base_address & 0xFFFFF000;
-    uint32_t mailbox_offset = mailbox_base_address - aligned_addr;
+    uint64_t aligned_addr = mailbox_base_address & 0xFFFFFFFFFFFFF000;
+    uint64_t mailbox_offset = mailbox_base_address - aligned_addr;
+    printf("aligned_addr: 0x%llX\n", aligned_addr);
     void *map_base = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, aligned_addr);
     if (map_base == MAP_FAILED) {
         perror("Error mapping memory");
@@ -336,37 +372,37 @@ bool check_mailbox_ready(mailbox_registers *mb_regs)
 void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command)
 {
     mailbox_command_register cmd_reg;
-    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
     printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.opcode = command;
-    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_clear_payload_length(mailbox_registers *mb_regs)
 {
     mailbox_command_register cmd_reg;
-    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
     printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.payload_size = 0;
-    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_set_payload_length(mailbox_registers *mb_regs, uint16_t payload_size)
 {
     mailbox_command_register cmd_reg;
-    memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
+    my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
     printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.payload_size = payload_size;
-    memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
 }
 
 void mailbox_set_doorbell(mailbox_registers *mb_regs)
 {
     mailbox_control_register ctrl_reg;
-    memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
+    my_memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
     printf("%s:Control Register: Doorbell: 0x%04x\n", __func__,ctrl_reg.doorbell);
     ctrl_reg.doorbell = 1;
-    memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
+    my_memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
 }
 
 uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs)
@@ -377,10 +413,10 @@ uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs)
 void mailbox_clear_doorbell(mailbox_registers *mb_regs)
 {
     mailbox_control_register ctrl_reg;
-    memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
+    my_memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
     printf("%s:Control Register: Doorbell: 0x%04x\n", __func__,ctrl_reg.doorbell);
     ctrl_reg.doorbell = 0;
-    memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
+    my_memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
 }
 
 void read_payload(mailbox_registers *mb_regs, uint16_t payload_length, uint32_t *payload)
@@ -402,7 +438,7 @@ void mailbox_write_payload(mailbox_registers *mb_regs, uint16_t payload_length, 
 uint16_t mailbox_status_return_code(mailbox_registers *mb_regs)
 {
     mailbox_status_register status_reg;
-    memcpy(&status_reg, &mb_regs->MB_Status, sizeof(status_reg));
+    my_memcpy(&status_reg, &mb_regs->MB_Status, sizeof(status_reg));
     printf("Status Register: Background Operation Status: 0x%04x, Return Code: 0x%04x, Vendor Specific Ext Status: 0x%04x\n", status_reg.background_operation_status, status_reg.return_code, status_reg.vendor_specific_ext_status);
     return status_reg.return_code;
 }

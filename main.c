@@ -66,8 +66,8 @@ int main(int argc, char *argv[])
     uint16_t register_locator_offset = get_dvsec_register_locator_offset(pdev);
     printf("register Locator header Offset: 0x%04x\n", register_locator_offset);
 
-    uint32_t mailbox_base_address = get_mailbox_base_address(pdev);
-    printf("Mailbox Base Address: 0x%08x\n", mailbox_base_address);
+    uint64_t mailbox_base_address = get_mailbox_base_address(pdev);
+    printf("Mailbox Base Address: 0x%llx\n", mailbox_base_address);
 
     cxl_mailbox_clear_timestamp(mailbox_base_address);
     cxl_mailbox_get_timestamp(mailbox_base_address);
