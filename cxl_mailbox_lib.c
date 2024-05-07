@@ -12,6 +12,9 @@
 #define CXL_DEVICE_REGISTERS_ID 0x03
 
 #define CXL_TIMESTAMP_SIZE 0x8 // expressed in bytes
+static mailbox_registers *mb_regs;
+static int fd_mailbox;
+static void *map_base;
 
 void *my_memcpy(void *dest, const void *src, size_t n) {
     char *d = (char *)dest;
@@ -36,7 +39,9 @@ void *my_memcpy(void *dest, const void *src, size_t n) {
 void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_size)
 {
     printf("Timestamp: 0x%08x%08x\n", payload[1], payload[0]);
-    time_t timestamp = (time_t)payload[1];
+    time_t timestamp;
+    printf("sizeof time_t = %d",sizeof(time_t));
+    memcpy(&timestamp,payload,sizeof(time_t));
     struct tm *timeinfo = localtime(&timestamp);
     printf("Timestamp: %s", asctime(timeinfo));
 }
@@ -128,16 +133,16 @@ void cxl_mailbox_get_timestamp(uint64_t mailbox_base_address)
 
     int ret = send_mailbox_command(mailbox_base_address, 0x300, &payload_size, payload, &ret_code); // 0x300 is GET_TIMESTAMP command
     print_ret_code(ret_code);
-    convert_timestamp_to_human_readable(payload,    payload_size) ;
+    convert_timestamp_to_human_readable(payload,payload_size) ;
     free(payload);
 }
 
 void cxl_mailbox_clear_timestamp(uint64_t mailbox_base_address)
 {
     uint32_t *payload = NULL;
-    uint16_t payload_size =NULL;
+    uint16_t payload_size =0;
     uint16_t ret_code =0;
-    int ret = send_mailbox_command(mailbox_base_address, 0x301, payload_size, payload, &ret_code); // 0x301 is SET_TIMESTAMP command
+    int ret = send_mailbox_command(mailbox_base_address, 0x301, &payload_size, payload, &ret_code); // 0x301 is SET_TIMESTAMP command
     print_ret_code(ret_code);
 }
 
@@ -294,30 +299,47 @@ uint32_t get_register_block_number_from_header(registerLocator *register_locator
     return ((register_locator->PCIE_ext_cap_hdr.DVSEC_hdr1.DVSEC_Length -10-2)/8);
 }
 
-int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16_t *payload_size, uint32_t *payload, uint16_t *ret_code)
-{
-    int fd = open("/dev/mem", O_RDWR | O_DSYNC);
-    if (fd == -1) {
+void map_mailbox_registers(uint64_t mailbox_base_address) {
+    fd_mailbox = open("/dev/mem", O_RDWR | O_DSYNC);
+    if (fd_mailbox == -1) {
         perror("Error opening /dev/mem");
         exit(1);
     }
     uint64_t aligned_addr = mailbox_base_address & 0xFFFFFFFFFFFFF000;
     uint64_t mailbox_offset = mailbox_base_address - aligned_addr;
     printf("aligned_addr: 0x%llX\n", aligned_addr);
-    void *map_base = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, aligned_addr);
+    map_base = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd_mailbox, aligned_addr);
     if (map_base == MAP_FAILED) {
         perror("Error mapping memory");
-        close(fd);
+        close(fd_mailbox);
         exit(1);
     }
     uint8_t *mailbox_base = (uint8_t *)map_base + (uint8_t)mailbox_offset;
-    mailbox_registers *mb_regs = (mailbox_registers *)(mailbox_base);
     printf("Mailbox Base: 0x%08x\n", mailbox_base);
+    mb_regs = (mailbox_registers *)(mailbox_base);
+}
+
+int close_mmap() {
+    if (munmap(map_base, 4096) == -1) {
+        perror("Error unmapping memory");
+        close(fd_mailbox);
+        exit(1);
+    }
+
+    close(fd_mailbox);
+    return 0;
+}
+
+int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16_t *payload_size, uint32_t *payload, uint16_t *ret_code)
+{
+    if(mb_regs==NULL)
+        map_mailbox_registers(mailbox_base_address);
+    
     if(check_mailbox_ready(mb_regs)){
         printf("Mailbox is ready\n");
         mailbox_write_command(mb_regs, command);
         mailbox_clear_payload_length(mb_regs);
-        if(payload_size !=NULL){
+        if(*payload_size != 0){
             mailbox_set_payload_length(mb_regs, *payload_size);
             mailbox_write_payload(mb_regs, *payload_size, payload);
         }
@@ -329,7 +351,7 @@ int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16
     }
     else{
         printf("Mailbox is not ready\n");
-        goto close_mmap;
+        close_mmap();
     }
 
     for(int j=0;j<100;j++){
@@ -340,7 +362,9 @@ int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16
             if(payload_length != 0 ){
                 if(payload == NULL || *payload_size == 0){
                     *payload_size = payload_length;
-                    payload = (uint32_t *)malloc(payload_size);
+                    if(payload!=NULL)
+                        free(payload);
+                    payload = (uint32_t *)malloc(*payload_size);
                 }
                 read_payload(mb_regs, payload_length, payload);
             }
@@ -353,16 +377,6 @@ int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16
             usleep(100000);
         }
     }
-  
-close_mmap:
-    if (munmap(map_base, 4096) == -1) {
-        perror("Error unmapping memory");
-        close(fd);
-        exit(1);
-    }
-
-    close(fd);
-    return 0;
 }
 bool check_mailbox_ready(mailbox_registers *mb_regs)
 {
@@ -373,36 +387,36 @@ void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command)
 {
     mailbox_command_register cmd_reg;
     my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
-    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.opcode = command;
     my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
 }
 
 void mailbox_clear_payload_length(mailbox_registers *mb_regs)
 {
     mailbox_command_register cmd_reg;
     my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
-    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.payload_size = 0;
     my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
 }
 
 void mailbox_set_payload_length(mailbox_registers *mb_regs, uint16_t payload_size)
 {
     mailbox_command_register cmd_reg;
     my_memcpy(&cmd_reg, &mb_regs->Command_Register, sizeof(cmd_reg));
-    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
     cmd_reg.payload_size = payload_size;
     my_memcpy(&mb_regs->Command_Register, &cmd_reg, sizeof(cmd_reg));
+    printf("%s:Command Register: Opcode: 0x%04x, Payload Size: 0x%04x\n", __func__,cmd_reg.opcode, cmd_reg.payload_size);
 }
 
 void mailbox_set_doorbell(mailbox_registers *mb_regs)
 {
     mailbox_control_register ctrl_reg;
     my_memcpy(&ctrl_reg, &mb_regs->MB_Control, sizeof(ctrl_reg));
-    printf("%s:Control Register: Doorbell: 0x%04x\n", __func__,ctrl_reg.doorbell);
     ctrl_reg.doorbell = 1;
     my_memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
+    printf("%s:Control Register: Doorbell: 0x%04x\n", __func__,ctrl_reg.doorbell);
 }
 
 uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs)

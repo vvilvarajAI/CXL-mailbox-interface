@@ -18,7 +18,7 @@ $(TARGET): $(OBJS) $(LIB_TARGET)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) -L. -lmailbox
 
 $(LIB_TARGET): $(LIB_OBJS)
-	$(CC) $(CFLAGS) -shared $^ -o $@
+	$(CC) $(CFLAGS) -shared -fPIC $^ -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
