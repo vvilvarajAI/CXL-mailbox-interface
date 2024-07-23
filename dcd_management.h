@@ -29,6 +29,11 @@
 #define FLAG_FORCED_REMOVAL                   (1 << 4)
 #define FLAG_SANITIZE_ON_RELEASE              (1 << 5)
 
+#define VALIDITY_BITMAP_REFERENCE_VALID      (1 << 0)
+#define VALIDITY_BITMAP_PENDING_REFERENCE_VALID (1 << 1)
+
+#define TAG_FLAG_FM_HOLDS_REFERENCE          (1 << 0)
+
 typedef struct {
     uint64_t region_base;               // 00h 8: Region Base
     uint64_t region_decode_length;      // 08h 8: Region Decode Length
@@ -87,11 +92,14 @@ typedef struct {
     uint8_t num_available_regions;         // 2h 1: Number of Available Regions
     uint8_t num_regions_returned;          // 3h 1: Number of Regions Returned
     dc_region_config_entry region_config_list[]; // 4h Varies: Region Configuration List
-    uint32_t total_num_supported_extents;  // Varies 4: Total Number of Supported Extents
-    uint32_t num_available_extents;        // Varies 4: Number of Available Extents
-    uint32_t total_num_supported_tags;     // Varies 4: Total Number of Supported Tags
-    uint32_t num_available_tags;           // Varies 4: Number of Available Tags
-} get_host_dc_region_config_response_payload;
+} get_host_dc_region_config_response_part1_t;
+
+typedef struct {
+    uint32_t total_num_supported_extents;  // 4h 4: Total Number of Supported Extents
+    uint32_t num_available_extents;        // 8h 4: Number of Available Extents
+    uint32_t total_num_supported_tags;     // Ch 4: Total Number of Supported Tags
+    uint32_t num_available_tags;           // 10h 4: Number of Available Tags
+} get_host_dc_region_config_response_part2_t;
 
 typedef struct {
     uint8_t region_id;               // 0h 1: Region ID
@@ -160,6 +168,7 @@ typedef struct {
     uint8_t reserved[3];               // 0Dh 3: Reserved
     dynamic_capacity_tag_info tags_list[]; // 10h Varies: Tags List (array of Dynamic Capacity Tag Information structures)
 } dynamic_capacity_list_tags_response_payload;
+
 
 // Function declarations
 void get_dcd_info(uint64_t mailbox_base_address);

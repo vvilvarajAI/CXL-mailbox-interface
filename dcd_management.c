@@ -46,7 +46,7 @@ void get_host_dc_region_config(uint64_t mailbox_base_address, uint16_t host_id, 
     };
 
     // Calculate the size of the response payload
-    uint16_t response_payload_size = sizeof(get_host_dc_region_config_response_payload) + region_count * sizeof(dc_region_config_entry);
+    uint16_t response_payload_size = sizeof(get_host_dc_region_config_response_part1_t) + sizeof(get_host_dc_region_config_response_part2_t) + region_count * sizeof(dc_region_config_entry);
     
     // Allocate memory for the response payload
     uint32_t *response_payload = (uint32_t *)malloc(response_payload_size);
@@ -58,7 +58,7 @@ void get_host_dc_region_config(uint64_t mailbox_base_address, uint16_t host_id, 
     int ret = send_mailbox_command(mailbox_base_address, GET_HOST_DC_REGION_CONFIG_OPCODE, &response_payload_size, response_payload, &ret_code);
 
     // Print the response payload
-    get_host_dc_region_config_response_payload *payload = (get_host_dc_region_config_response_payload *)response_payload;
+    get_host_dc_region_config_response_part1_t *payload = (get_host_dc_region_config_response_part1_t *)response_payload;
     printf("\t\tHost DC Region Config Response Payload:\n");
     printf("\t\tHost ID: %d\n", payload->host_id);
     printf("\t\tNumber of Available Regions: %d\n", payload->num_available_regions);
@@ -75,15 +75,11 @@ void get_host_dc_region_config(uint64_t mailbox_base_address, uint16_t host_id, 
         printf("\t\t\tSanitize on Release: %d\n", entry->sanitize_on_release);
     }
 
-    uint32_t *total_num_supported_extents = (uint32_t *)(payload->region_config_list + region_count);
-    uint32_t *num_available_extents = total_num_supported_extents + 1;
-    uint32_t *total_num_supported_tags = num_available_extents + 1;
-    uint32_t *num_available_tags = total_num_supported_tags + 1;
-
-    printf("\t\tTotal Number of Supported Extents: %u\n", *total_num_supported_extents);
-    printf("\t\tNumber of Available Extents: %u\n", *num_available_extents);
-    printf("\t\tTotal Number of Supported Tags: %u\n", *total_num_supported_tags);
-    printf("\t\tNumber of Available Tags: %u\n", *num_available_tags);
+    get_host_dc_region_config_response_part2_t *payload2 = (get_host_dc_region_config_response_part2_t *)(response_payload + sizeof(get_host_dc_region_config_response_part1_t)+ region_count * sizeof(dc_region_config_entry));
+    printf("\t\tTotal Number of Supported Extents: %u\n", payload2->total_num_supported_extents);
+    printf("\t\tNumber of Available Extents: %u\n", payload2->num_available_extents);
+    printf("\t\tTotal Number of Supported Tags: %u\n", payload2->total_num_supported_tags);
+    printf("\t\tNumber of Available Tags: %u\n", payload2->num_available_tags);
 
     print_ret_code(ret_code);
 
@@ -166,11 +162,6 @@ void get_dc_region_extent_lists(uint64_t mailbox_base_address, uint16_t host_id,
     // Free the allocated memory
     free(response_payload);
 }
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "dcd_management.h"
-
 void initiate_dynamic_capacity_add(uint64_t mailbox_base_address, uint16_t host_id, uint8_t selection_policy, uint8_t region_number, uint64_t length, uint64_t tag, uint32_t extent_count, dynamic_capacity_extent *extent_list) {
     // Calculate the size of the request payload
     uint16_t request_payload_size = sizeof(initiate_dynamic_capacity_add_request_payload) + extent_count * sizeof(dynamic_capacity_extent);
@@ -318,6 +309,46 @@ void dynamic_capacity_remove_reference(uint64_t mailbox_base_address, uint64_t t
     // Print the response payload (if any)
     printf("\t\tDynamic Capacity Remove Reference Response Payload:\n");
     printf("\t\tTag: %lu\n", request_payload.tag);
+
+    print_ret_code(ret_code);
+
+    // Free the allocated memory
+    free(response_payload);
+}
+
+void dynamic_capacity_list_tags (uint64_t mailbox_base_address, uint32_t starting_index, uint32_t max_tags)
+{
+    // Allocate memory for the request payload
+    dynamic_capacity_list_tags_request_payload request_payload = {
+        .starting_index = starting_index,
+        .max_tags = max_tags
+    };
+
+    // Calculate the size of the response payload
+    uint16_t response_payload_size = sizeof(dynamic_capacity_list_tags_response_payload);
+
+    // Allocate memory for the response payload
+    dynamic_capacity_list_tags_response_payload *response_payload = (dynamic_capacity_list_tags_response_payload *)malloc(response_payload_size);
+    memset(response_payload, 0, response_payload_size);
+
+    uint16_t ret_code = 0;
+
+    // Send the mailbox command
+    int ret = send_mailbox_command(mailbox_base_address, DYNAMIC_CAPACITY_LIST_TAGS_OPCODE, &response_payload_size, response_payload, &ret_code);
+
+    // Print the response payload
+    printf("\t\tDynamic Capacity List Tags Response Payload:\n");
+    printf("\t\tGeneration Number: %u\n", response_payload->generation_number);
+    printf("\t\tTotal Number of Tags: %u\n", response_payload->total_number_of_tags);
+    printf("\t\tNumber of Tags Returned: %u\n", response_payload->number_of_tags_returned);
+    printf("\t\tValidity Bitmap: %u\n", response_payload->validity_bitmap);
+
+    // Print the tags list
+    for (uint32_t i = 0; i < response_payload->number_of_tags_returned; i++) {
+        dynamic_capacity_tag_info *tag_info = &response_payload->tags_list[i];
+        printf("\t\tTag %u:\n", i);
+        // Print the tag information
+    }
 
     print_ret_code(ret_code);
 
