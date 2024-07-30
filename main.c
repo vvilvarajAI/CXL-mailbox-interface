@@ -8,6 +8,7 @@
 #include <time.h>
 #include "cxl_mailbox.h"
 #include "dcd_management.h"
+#include "main.h"
 
 #define CXL_Vendor_ID 0x1E98
 #define CXL_DEVICE_REGISTERS_ID 0x03
@@ -82,11 +83,14 @@ int main(int argc, char *argv[])
     uint64_t mailbox_base_address = get_mailbox_base_address(pdev);
     printf("Mailbox Base Address: 0x%llx\n", mailbox_base_address);
 
-    cxl_mailbox_clear_timestamp(mailbox_base_address);
-    cxl_mailbox_get_timestamp(mailbox_base_address);
-    get_dcd_info(mailbox_base_address);
+    cci_commands(mailbox_base_address);
+    pci_cleanup(pacc);
+    return 0;
+}
 
-     uint16_t host_id = 1;
+void cci_commands(uint64_t mailbox_base_address)
+{
+    uint16_t host_id = 1;
     uint8_t region_count = 2;
     uint8_t starting_region_index = 0;
     uint8_t region_id = 1;
@@ -101,17 +105,66 @@ int main(int argc, char *argv[])
     uint8_t flags = 0;
     uint32_t max_tags = 10;
     dynamic_capacity_extent extent_list[2] = {
-        { .starting_dpa = 0x2000, .length = 512, .tag = 111, .shared_extent_sequence = 0 },
-        { .starting_dpa = 0x3000, .length = 512, .tag = 222, .shared_extent_sequence = 1 }
-    };
-    get_host_dc_region_config(mailbox_base_address, host_id, region_count, starting_region_index);
-    set_dc_region_config(mailbox_base_address, region_id, region_block_size, sanitize_on_release);
-    get_dc_region_extent_lists(mailbox_base_address, host_id, extent_count, starting_extent_index);
-    initiate_dynamic_capacity_add(mailbox_base_address, host_id, selection_policy, region_number, length, tag, extent_count, extent_list);
-    initiate_dynamic_capacity_release(mailbox_base_address, host_id, flags, length, tag, extent_count, extent_list);
-    dynamic_capacity_add_reference(mailbox_base_address, tag);
-    dynamic_capacity_remove_reference(mailbox_base_address, tag);
-    dynamic_capacity_list_tags(mailbox_base_address, starting_extent_index, max_tags);
-    pci_cleanup(pacc);
-    return 0;
+        {.starting_dpa = 0x2000, .length = 512, .tag = 111, .shared_extent_sequence = 0},
+        {.starting_dpa = 0x3000, .length = 512, .tag = 222, .shared_extent_sequence = 1}};
+
+    int choice;
+
+    while (1) {
+        printf("\nSelect a function to call:\n");
+        printf("1. cxl_mailbox_clear_timestamp\n");
+        printf("2. cxl_mailbox_get_timestamp\n");
+        printf("3. get_dcd_info\n");
+        printf("4. get_host_dc_region_config\n");
+        printf("5. set_dc_region_config\n");
+        printf("6. get_dc_region_extent_lists\n");
+        printf("7. initiate_dynamic_capacity_add\n");
+        printf("8. initiate_dynamic_capacity_release\n");
+        printf("9. dynamic_capacity_add_reference\n");
+        printf("10. dynamic_capacity_remove_reference\n");
+        printf("11. dynamic_capacity_list_tags\n");
+        printf("12. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1:
+                cxl_mailbox_clear_timestamp(mailbox_base_address);
+                break;
+            case 2:
+                cxl_mailbox_get_timestamp(mailbox_base_address);
+                break;
+            case 3:
+                get_dcd_info(mailbox_base_address);
+                break;
+            case 4:
+                get_host_dc_region_config(mailbox_base_address, host_id, region_count, starting_region_index);
+                break;
+            case 5:
+                set_dc_region_config(mailbox_base_address, region_id, region_block_size, sanitize_on_release);
+                break;
+            case 6:
+                get_dc_region_extent_lists(mailbox_base_address, host_id, extent_count, starting_extent_index);
+                break;
+            case 7:
+                initiate_dynamic_capacity_add(mailbox_base_address, host_id, selection_policy, region_number, length, tag, extent_count, extent_list);
+                break;
+            case 8:
+                initiate_dynamic_capacity_release(mailbox_base_address, host_id, flags, length, tag, extent_count, extent_list);
+                break;
+            case 9:
+                dynamic_capacity_add_reference(mailbox_base_address, tag);
+                break;
+            case 10:
+                dynamic_capacity_remove_reference(mailbox_base_address, tag);
+                break;
+            case 11:
+                dynamic_capacity_list_tags(mailbox_base_address, starting_extent_index, max_tags);
+                break;
+            case 12:
+                return 0;
+            default:
+                printf("Invalid choice. Please try again.\n");
+        }
+    }
 }
