@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -Wall -Wextra -g -D_GNU_SOURCE
+CFLAGS := -Wall -Wextra -g -D_GNU_SOURCE -fPIC
 LDFLAGS := -lpci -lpciaccess
 
 SRCS := main.c
@@ -18,7 +18,7 @@ $(TARGET): $(OBJS) $(LIB_TARGET)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) -L. -lmailbox
 
 $(LIB_TARGET): $(LIB_OBJS)
-	$(CC) $(CFLAGS) -shared -fPIC $^ -o $@
+	$(CC) $(CFLAGS) -shared $^ -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

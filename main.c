@@ -14,12 +14,24 @@
 
 #define CXL_TIMESTAMP_SIZE 0x8 // expressed in bytes
 
+unsigned int debug_mode = 0;
+
 int main(int argc, char *argv[])
 {
-    if (argc != 2)
+    if (argc != 4 || strcmp(argv[2], "-d") != 0)
     {
-        printf("Usage: %s <BDF>\n", argv[0]);
+        printf("Usage: %s <BDF> -d <debug_mode>\n", argv[0]);
         return 1;
+    }
+    
+    debug_mode = atoi(argv[3]);
+    if (debug_mode == 1)
+    {
+        printf("Debug mode enabled\n");
+    }
+    else
+    {
+        printf("Debug mode disabled\n");
     }
 
     const char *bdf = argv[1];
