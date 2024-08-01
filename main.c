@@ -8,6 +8,7 @@
 #include <time.h>
 #include "cxl_mailbox.h"
 #include "dcd_management.h"
+#include "info_status.h"
 #include "main.h"
 
 #define CXL_Vendor_ID 0x1E98
@@ -123,7 +124,12 @@ void cci_commands(uint64_t mailbox_base_address)
         printf("9. dynamic_capacity_add_reference\n");
         printf("10. dynamic_capacity_remove_reference\n");
         printf("11. dynamic_capacity_list_tags\n");
-        printf("12. Exit\n");
+        printf("12. identify_device\n");
+        printf("13. get_background_operation_status\n");
+        printf("14. get_response_message_limit\n");
+        printf("15. set_response_message_limit\n");
+        printf("16. request_abort_background_operation\n");
+        printf("17. Exit\n");
         printf("Enter your choice: ");
         scanf("%d", &choice);
 
@@ -162,7 +168,27 @@ void cci_commands(uint64_t mailbox_base_address)
                 dynamic_capacity_list_tags(mailbox_base_address, starting_extent_index, max_tags);
                 break;
             case 12:
-                return 0;
+                identify_device(mailbox_base_address);
+                break;
+            case 13:
+                get_background_operation_status(mailbox_base_address);
+                break;
+            case 14:
+                get_response_message_limit(mailbox_base_address);
+                break;
+            case 15:
+                {
+                    uint8_t response_message_limit;
+                    printf("Enter response message limit: ");
+                    scanf("%hhu", &response_message_limit);
+                    set_response_message_limit(mailbox_base_address, response_message_limit);
+                }
+                break;
+            case 16:
+                request_abort_background_operation(mailbox_base_address);
+                break;
+            case 17:
+                return;
             default:
                 printf("Invalid choice. Please try again.\n");
         }

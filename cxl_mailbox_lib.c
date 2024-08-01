@@ -59,12 +59,12 @@ void *my_memcpy(void *dest, const void *src, size_t n)
 
 void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_size)
 {
-    DEBUG_PRINT("Timestamp: 0x%08x%08x\n", payload[1], payload[0]);
+    printf("Timestamp: 0x%08x%08x\n", payload[1], payload[0]);
     time_t timestamp;
     DEBUG_PRINT("sizeof time_t = %d", sizeof(time_t));
     memcpy(&timestamp, payload, sizeof(time_t));
     struct tm *timeinfo = localtime(&timestamp);
-    DEBUG_PRINT("Timestamp: %s", asctime(timeinfo));
+    printf("Timestamp: %s", asctime(timeinfo));
 }
 
 void print_ret_code(uint16_t ret_code)
