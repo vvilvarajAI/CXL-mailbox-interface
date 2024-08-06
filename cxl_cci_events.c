@@ -5,6 +5,7 @@
 #include "info_status.h"
 #include "cxl_cci_events.h"
 
+#if 0
 void get_events_records(mailbox_base_address)
 {
     // Allocate memory for the request payload
@@ -41,3 +42,4 @@ void get_events_records(mailbox_base_address)
     print_ret_code(ret_code);
     free(response_payload);
 }
+#endif

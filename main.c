@@ -140,7 +140,7 @@ void cci_commands(uint64_t mailbox_base_address)
             case 2:
                 cxl_mailbox_get_timestamp(mailbox_base_address);
                 break;
-            case 3:
+/*             case 3:
                 get_dcd_info(mailbox_base_address);
                 break;
             case 4:
@@ -167,13 +167,13 @@ void cci_commands(uint64_t mailbox_base_address)
             case 11:
                 dynamic_capacity_list_tags(mailbox_base_address, starting_extent_index, max_tags);
                 break;
-            case 12:
+ */            case 12:
                 identify_device(mailbox_base_address);
                 break;
             case 13:
                 get_background_operation_status(mailbox_base_address);
                 break;
-            case 14:
+/*             case 14:
                 get_response_message_limit(mailbox_base_address);
                 break;
             case 15:
@@ -186,7 +186,7 @@ void cci_commands(uint64_t mailbox_base_address)
                 break;
             case 16:
                 request_abort_background_operation(mailbox_base_address);
-                break;
+                break; */
             case 17:
                 return;
             default:

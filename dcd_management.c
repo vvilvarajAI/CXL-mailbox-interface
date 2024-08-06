@@ -8,7 +8,7 @@
 #include <time.h>
 #include "cxl_mailbox.h"
 #include "dcd_management.h"
-
+#if 0
 get_dcd_info(uint64_t mailbox_base_address)
 {
     uint32_t *payload = (uint32_t *)malloc(sizeof(dcd_info_response_payload));
@@ -355,3 +355,4 @@ void dynamic_capacity_list_tags (uint64_t mailbox_base_address, uint32_t startin
     // Free the allocated memory
     free(response_payload);
 }
+#endif

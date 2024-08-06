@@ -21,6 +21,7 @@ void *my_memcpy(void *dest, const void *src, size_t n);
 void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_size);
 void print_ret_code(uint16_t ret_code);
 void cxl_mailbox_get_timestamp(uint64_t mailbox_base_address);
+void print_mailbox_registers(mailbox_registers *mb_regs);
 
 #define DEBUG_PRINT(fmt, ...)       \
     if (debug_mode == 0)            \
@@ -69,80 +70,80 @@ void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_siz
 
 void print_ret_code(uint16_t ret_code)
 {
-    DEBUG_PRINT("Return Code: 0x%04x==", ret_code);
+    printf("Return Code: 0x%04x==", ret_code);
     switch (ret_code)
     {
     case SUCCESS:
-        DEBUG_PRINT("Success\n");
+        printf("Success\n");
         break;
     case BACKGROUND_COMMAND_STARTED:
-        DEBUG_PRINT("Background Command Started\n");
+        printf("Background Command Started\n");
         break;
     case INVALID_INPUT:
-        DEBUG_PRINT("Invalid Input\n");
+        printf("Invalid Input\n");
         break;
     case UNSUPPORTED:
-        DEBUG_PRINT("Unsupported\n");
+        printf("Unsupported\n");
         break;
     case INTERNAL_ERROR:
-        DEBUG_PRINT("Internal Error\n");
+        printf("Internal Error\n");
         break;
     case RETRY_REQUIRED:
-        DEBUG_PRINT("Retry Required\n");
+        printf("Retry Required\n");
         break;
     case BUSY:
-        DEBUG_PRINT("Busy\n");
+        printf("Busy\n");
         break;
     case MEDIA_DISABLED:
-        DEBUG_PRINT("Media Disabled\n");
+        printf("Media Disabled\n");
         break;
     case FW_TRANSFER_IN_PROGRESS:
-        DEBUG_PRINT("FW Transfer In Progress\n");
+        printf("FW Transfer In Progress\n");
         break;
     case FW_TRANSFER_OUT_OF_ORDER:
-        DEBUG_PRINT("FW Transfer Out of Order\n");
+        printf("FW Transfer Out of Order\n");
         break;
     case FW_AUTHENTICATION_FAILED:
-        DEBUG_PRINT("FW Authentication Failed\n");
+        printf("FW Authentication Failed\n");
         break;
     case INVALID_SLOT:
-        DEBUG_PRINT("Invalid Slot\n");
+        printf("Invalid Slot\n");
         break;
     case ACTIVATION_FAILED_ROLLBACK:
-        DEBUG_PRINT("Activation Failed Rollback\n");
+        printf("Activation Failed Rollback\n");
         break;
     case ACTIVATION_FAILED_RESET:
-        DEBUG_PRINT("Activation Failed Reset\n");
+        printf("Activation Failed Reset\n");
         break;
     case INVALID_HANDLE:
-        DEBUG_PRINT("Invalid Handle\n");
+        printf("Invalid Handle\n");
         break;
     case INVALID_PHYSICAL_ADDRESS:
-        DEBUG_PRINT("Invalid Physical Address\n");
+        printf("Invalid Physical Address\n");
         break;
     case INJECT_POISON_LIMIT_REACHED:
-        DEBUG_PRINT("Inject Poison Limit Reached\n");
+        printf("Inject Poison Limit Reached\n");
         break;
     case PERMANENT_MEDIA_FAILURE:
-        DEBUG_PRINT("Permanent Media Failure\n");
+        printf("Permanent Media Failure\n");
         break;
     case ABORTED:
-        DEBUG_PRINT("Aborted\n");
+        printf("Aborted\n");
         break;
     case INVALID_SECURITY_STATE:
-        DEBUG_PRINT("Invalid Security State\n");
+        printf("Invalid Security State\n");
         break;
     case INCORRECT_PASSPHRASE:
-        DEBUG_PRINT("Incorrect Passphrase\n");
+        printf("Incorrect Passphrase\n");
         break;
     case UNSUPPORTED_MAILBOX:
-        DEBUG_PRINT("Unsupported Mailbox\n");
+        printf("Unsupported Mailbox\n");
         break;
     case INVALID_PAYLOAD_LENGTH:
-        DEBUG_PRINT("Invalid Payload Length\n");
+        printf("Invalid Payload Length\n");
         break;
     default:
-        DEBUG_PRINT("Unknown Return Code\n");
+        printf("Unknown Return Code\n");
         break;
     }
 }
@@ -153,9 +154,17 @@ void cxl_mailbox_get_timestamp(uint64_t mailbox_base_address)
     uint16_t payload_size = CXL_TIMESTAMP_SIZE;
     uint16_t ret_code = 0;
 
-    int ret = send_mailbox_command(mailbox_base_address, 0x300, &payload_size, payload, &ret_code); // 0x300 is GET_TIMESTAMP command
+    MailboxCommand *command = (MailboxCommand *)malloc(sizeof(MailboxCommand));
+    command->command = 0x300; // 0x300 is GET_TIMESTAMP command
+    command->input_payload_size = 0;
+    command->input_payload = NULL;
+    command->output_payload_size = payload_size;
+    command->output_payload = payload;
+    command->ret_code = &ret_code;
+
+    int ret = send_mailbox_command_with_output_payload(mailbox_base_address, command);
     print_ret_code(ret_code);
-    convert_timestamp_to_human_readable(payload, payload_size);
+    convert_timestamp_to_human_readable(command->output_payload, command->output_payload_size);
     free(payload);
 }
 
@@ -164,7 +173,15 @@ void cxl_mailbox_clear_timestamp(uint64_t mailbox_base_address)
     uint32_t *payload = NULL;
     uint16_t payload_size = 0;
     uint16_t ret_code = 0;
-    int ret = send_mailbox_command(mailbox_base_address, 0x301, &payload_size, payload, &ret_code); // 0x301 is SET_TIMESTAMP command
+    MailboxCommand *command = (MailboxCommand *)malloc(sizeof(MailboxCommand));
+    command->command = 0x301; // 0x301 is SET_TIMESTAMP command
+    command->input_payload_size = 0;
+    command->input_payload = NULL;
+    command->output_payload_size = payload_size;
+    command->output_payload = payload;
+    command->ret_code = &ret_code;
+
+     int ret = send_mailbox_command_with_output_payload(mailbox_base_address, command);
     print_ret_code(ret_code);
 }
 
@@ -367,7 +384,8 @@ int close_mmap()
     return 0;
 }
 
-int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16_t *payload_size, uint32_t *payload, uint16_t *ret_code)
+
+int send_mailbox_command(uint64_t mailbox_base_address, MailboxCommand *command)
 {
     if (mb_regs == NULL)
         map_mailbox_registers(mailbox_base_address);
@@ -375,19 +393,20 @@ int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16
     if (check_mailbox_ready(mb_regs))
     {
         DEBUG_PRINT("Mailbox is ready\n");
-        mailbox_write_command(mb_regs, command);
+        mailbox_write_command(mb_regs, command->command);
         mailbox_clear_payload_length(mb_regs);
 
-        if (*payload_size != 0)
+        if (command->input_payload_size != 0)
         {
-            mailbox_set_payload_length(mb_regs, *payload_size);
-            mailbox_write_payload(mb_regs, *payload_size, payload);
+            mailbox_set_payload_length(mb_regs, command->input_payload_size);
+            mailbox_write_payload(mb_regs, command->input_payload_size, command->input_payload);
         }
         else
         {
             mailbox_set_payload_length(mb_regs, 0);
         }
 
+        print_mailbox_registers(mb_regs);
         mailbox_set_doorbell(mb_regs);
     }
     else
@@ -397,44 +416,116 @@ int send_mailbox_command(uint64_t mailbox_base_address, uint16_t command, uint16
         return -1; // Return error if mailbox is not ready initially
     }
 
+    if (!wait_for_mailbox_ready(mb_regs))
+    {
+        DEBUG_PRINT("Mailbox is not ready\n");
+        close_mmap();
+        return -1; // Return error if mailbox is not ready after waiting
+    }
+
+    uint16_t payload_length = mailbox_get_payload_length(mb_regs);
+    DEBUG_PRINT("Payload Length returned from device : 0x%04x\n", payload_length);
+
+    if (payload_length != 0)
+    {
+        if (command->output_payload == NULL || command->output_payload_size == 0)
+        {
+            if(command->output_payload_size != payload_length)
+            {
+                DEBUG_PRINT("Payload length mismatch, updating with new memory allocation\n");
+                if (command->output_payload != NULL)
+                free(command->output_payload);
+                command->output_payload_size = payload_length;
+                command->output_payload = (uint32_t *)malloc(command->output_payload_size);
+            }
+            
+            if (command->output_payload == NULL)
+            {
+                DEBUG_PRINT("Memory allocation failed\n");
+                return -1; // Return error if memory allocation fails
+            }
+        }
+        *(command->ret_code) = mailbox_status_return_code(mb_regs);
+        read_payload(mb_regs, payload_length, command->output_payload);
+        return 0; // Return success
+    }
+
+    return -1; // Return error if payload length is 0
+}
+
+
+
+int send_mailbox_command_with_input_payload(uint64_t mailbox_base_address, MailboxCommand *command)
+{
+    uint16_t payload_size = command->input_payload_size;
+    uint32_t *payload = command->input_payload;
+    return send_mailbox_command(mailbox_base_address, command);
+}
+
+int send_mailbox_command_with_output_payload(uint64_t mailbox_base_address, MailboxCommand *command)
+{
+    uint16_t payload_size = 0;
+    uint32_t *payload = NULL;
+    int ret = send_mailbox_command(mailbox_base_address, command);
+    if (ret == 0)
+    {
+        payload_size = command->output_payload_size;
+        payload = command->output_payload;
+        ret = send_mailbox_command(mailbox_base_address, command);
+    }
+    return ret;
+}
+
+int send_mailbox_command_with_input_output_payload(uint64_t mailbox_base_address, MailboxCommand *command)
+{
+    uint16_t payload_size = command->input_payload_size;
+    uint32_t *payload = command->input_payload;
+    int ret = send_mailbox_command(mailbox_base_address, command);
+    if (ret == 0)
+    {
+        payload_size = command->output_payload_size;
+        payload = command->output_payload;
+        ret =  ret = send_mailbox_command(mailbox_base_address, command);
+    }
+    return ret;
+}
+
+int wait_for_mailbox_ready(mailbox_registers *mb_regs)
+{
     for (int j = 0; j < 100; j++)
     {
         if (check_mailbox_ready(mb_regs))
         {
             DEBUG_PRINT("Mailbox is ready\n");
-            uint16_t payload_length = mailbox_get_payload_length(mb_regs);
-            DEBUG_PRINT("Payload Length: 0x%04x\n", payload_length);
-
-            if (payload_length != 0)
-            {
-                if (payload == NULL || *payload_size == 0)
-                {
-                    *payload_size = payload_length;
-                    if (payload != NULL)
-                        free(payload);
-                    payload = (uint32_t *)malloc(*payload_size);
-                    if (payload == NULL)
-                    {
-                        DEBUG_PRINT("Memory allocation failed\n");
-                        return -1; // Return error if memory allocation fails
-                    }
-                }
-                *ret_code = mailbox_status_return_code(mb_regs);
-                return 0; // Return success
-            }
+            return true;
         }
-        else
+        else    
         {
             DEBUG_PRINT("Mailbox is not ready\n");
             usleep(100000); // Sleep for 100 milliseconds
         }
     }
 
-    return -1; // Return error if mailbox is not ready after 100 attempts
+    return 0; // Return false if mailbox is not ready after 100 attempts
 }
+
 bool check_mailbox_ready(mailbox_registers *mb_regs)
 {
     return mb_regs->MB_Control.doorbell == 0;
+}
+
+void print_mailbox_registers(mailbox_registers *mb_regs)
+{
+    DEBUG_PRINT("Mailbox Registers:\n");
+    DEBUG_PRINT("MB_Capabilities: 0x%08x\n", mb_regs->MB_Capabilities);
+    DEBUG_PRINT("MB_Control: 0x%08x\n", mb_regs->MB_Control);
+    DEBUG_PRINT("Command_Register: 0x%08x\n", mb_regs->Command_Register);
+    DEBUG_PRINT("MB_Status: 0x%08x\n", mb_regs->MB_Status);
+    DEBUG_PRINT("Background_Command_Status_Register: 0x%08x\n", mb_regs->Background_Command_Status_Register);
+    for (int i = 0; i < 512; i++)
+    {
+        //DEBUG_PRINT("Commmand_Payload_Registers[%d]: 0x%08x\n", i, mb_regs->Commmand_Payload_Registers[i]);
+    }
 }
 
 void mailbox_write_command(mailbox_registers *mb_regs, uint16_t command)
@@ -471,6 +562,7 @@ void mailbox_set_doorbell(mailbox_registers *mb_regs)
     ctrl_reg.doorbell = 1;
     my_memcpy(&mb_regs->MB_Control, &ctrl_reg, sizeof(ctrl_reg));
     DEBUG_PRINT("%s:Control Register: Doorbell: 0x%04x\n", __func__, ctrl_reg.doorbell);
+    DEBUG_PRINT("%s:Control Register from device: doorbell: 0x%04x\n", __func__,mb_regs->MB_Control.doorbell);
 }
 
 uint16_t mailbox_get_payload_length(mailbox_registers *mb_regs)
