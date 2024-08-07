@@ -129,7 +129,8 @@ void cci_commands(uint64_t mailbox_base_address)
         printf("14. get_response_message_limit\n");
         printf("15. set_response_message_limit\n");
         printf("16. request_abort_background_operation\n");
-        printf("17. Exit\n");
+        printf("17. get_supported_logs\n");
+        printf("18. Exit\n");
         printf("Enter your choice: ");
         scanf("%d", &choice);
 
@@ -166,28 +167,31 @@ void cci_commands(uint64_t mailbox_base_address)
                 break;
             case 11:
                 dynamic_capacity_list_tags(mailbox_base_address, starting_extent_index, max_tags);
-                break;
- */            case 12:
+                break;*/
+            case 12: 
                 identify_device(mailbox_base_address);
                 break;
             case 13:
                 get_background_operation_status(mailbox_base_address);
                 break;
-/*             case 14:
+            case 14:
                 get_response_message_limit(mailbox_base_address);
                 break;
-            case 15:
+/*             case 15:
                 {
                     uint8_t response_message_limit;
                     printf("Enter response message limit: ");
                     scanf("%hhu", &response_message_limit);
                     set_response_message_limit(mailbox_base_address, response_message_limit);
                 }
-                break;
+                break; 
             case 16:
                 request_abort_background_operation(mailbox_base_address);
-                break; */
+                break;*/
             case 17:
+                get_supported_logs(mailbox_base_address);
+                break;
+            case 18:
                 return;
             default:
                 printf("Invalid choice. Please try again.\n");

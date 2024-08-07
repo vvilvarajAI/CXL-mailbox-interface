@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include "cxl_mailbox.h"
+#include <cxl/libcxl.h>
 
 #define CXL_Vendor_ID 0x1E98
 #define CXL_DEVICE_REGISTERS_ID 0x03
@@ -22,6 +23,7 @@ void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_siz
 void print_ret_code(uint16_t ret_code);
 void cxl_mailbox_get_timestamp(uint64_t mailbox_base_address);
 void print_mailbox_registers(mailbox_registers *mb_regs);
+void cxl_cmd_libcxl(uint16_t command, uint32_t *payload, uint16_t payload_size);
 
 #define DEBUG_PRINT(fmt, ...)       \
     if (debug_mode == 0)            \
@@ -62,10 +64,14 @@ void convert_timestamp_to_human_readable(uint32_t *payload, uint16_t payload_siz
 {
     printf("Timestamp: 0x%08x%08x\n", payload[1], payload[0]);
     time_t timestamp;
-    DEBUG_PRINT("sizeof time_t = %d", sizeof(time_t));
+    DEBUG_PRINT("sizeof time_t = %d\n", sizeof(time_t));
     memcpy(&timestamp, payload, sizeof(time_t));
-    struct tm *timeinfo = localtime(&timestamp);
-    printf("Timestamp: %s", asctime(timeinfo));
+        struct tm *timeinfo = localtime(&timestamp);
+        if (timeinfo == NULL) {
+        perror("localtime");
+        return;
+    }
+        printf("Timestamp: %s", asctime(timeinfo));
 }
 
 void print_ret_code(uint16_t ret_code)
@@ -162,10 +168,13 @@ void cxl_mailbox_get_timestamp(uint64_t mailbox_base_address)
     command->output_payload = payload;
     command->ret_code = &ret_code;
 
-    int ret = send_mailbox_command_with_output_payload(mailbox_base_address, command);
-    print_ret_code(ret_code);
+    //int ret = send_mailbox_command_with_output_payload(mailbox_base_address, command);
+   // print_ret_code(ret_code);
+
+    cxl_cmd_libcxl(command->command, command->output_payload,command->output_payload_size);
     convert_timestamp_to_human_readable(command->output_payload, command->output_payload_size);
     free(payload);
+    free(command);
 }
 
 void cxl_mailbox_clear_timestamp(uint64_t mailbox_base_address)
@@ -181,8 +190,10 @@ void cxl_mailbox_clear_timestamp(uint64_t mailbox_base_address)
     command->output_payload = payload;
     command->ret_code = &ret_code;
 
-     int ret = send_mailbox_command_with_output_payload(mailbox_base_address, command);
-    print_ret_code(ret_code);
+    /*  int ret = send_mailbox_command_with_output_payload(mailbox_base_address, command);
+    print_ret_code(ret_code); */
+    cxl_cmd_libcxl(command->command, command->output_payload,command->output_payload_size);
+    free(command);
 }
 
 void print_config_header(struct pci_dev *pdev)
@@ -232,9 +243,8 @@ uint16_t get_dvsec_register_locator_offset(struct pci_dev *pdev)
         DEBUG_PRINT("DVSEC_HDR2:\n DVSEC_ID: 0x%04x\n\n", pcie_ext_cap_hdr.DVSEC_hdr2.DVSEC_ID);
         if (pcie_ext_cap_hdr.DVSEC_hdr1.DVSEC_Vendor_ID == CXL_Vendor_ID)
         {
-#ifdef DEBUG
+
             DEBUG_PRINT("DVSEC ID is %x\n", pcie_ext_cap_hdr.DVSEC_hdr2.DVSEC_ID);
-#endif
             if (pcie_ext_cap_hdr.DVSEC_hdr2.DVSEC_ID == 0x8)
             {
                 DEBUG_PRINT("CXL Device found\n");
@@ -603,4 +613,78 @@ uint16_t mailbox_status_return_code(mailbox_registers *mb_regs)
     my_memcpy(&status_reg, &mb_regs->MB_Status, sizeof(status_reg));
     DEBUG_PRINT("Status Register: Background Operation Status: 0x%04x, Return Code: 0x%04x, Vendor Specific Ext Status: 0x%04x\n", status_reg.background_operation_status, status_reg.return_code, status_reg.vendor_specific_ext_status);
     return status_reg.return_code;
+}
+
+// Define a function to test cxl_cmd_new_raw
+void cxl_cmd_libcxl(uint16_t command,uint32_t *payload ,uint16_t payload_size) {
+    struct cxl_ctx *ctx;
+    struct cxl_memdev *memdev;
+    struct cxl_cmd *cmd;
+    uint32_t command_id = (uint32_t) command; // Example command ID
+    char *output_payload=(char*)payload; // Adjust size based on command requirements
+    size_t output_size = payload_size;
+
+    printf("Command ID: 0x%X\n", command_id);
+
+    // Initialize CXL context
+    if (cxl_new(&ctx)) {
+        fprintf(stderr, "Failed to initialize CXL context\n");
+        return -1;
+    }
+
+    // Get the first memory device
+    memdev = cxl_memdev_get_first(ctx);
+    if (!memdev) {
+        fprintf(stderr, "No CXL memory device found\n");
+        cxl_unref(ctx);
+        return -1;
+    }
+
+    // Print memory device name for debugging
+    printf("Using CXL memory device: %s\n", cxl_memdev_get_devname(memdev));
+
+    // Create a new raw CXL command
+    cmd = cxl_cmd_new_raw(memdev, command_id);
+    if (!cmd) {
+        fprintf(stderr, "Failed to create CXL raw command\n");
+        cxl_unref(ctx);
+        return -1;
+    }
+
+    // Set the output payload for the command
+    if (cxl_cmd_set_output_payload(cmd, output_payload, output_size)) {
+        fprintf(stderr, "Failed to set output payload\n");
+        cxl_cmd_unref(cmd);
+        cxl_unref(ctx);
+        return -1;
+    }
+
+    // Execute the command
+    if (cxl_cmd_submit(cmd)) {
+        fprintf(stderr, "Failed to execute CXL command\n");
+        cxl_cmd_unref(cmd);
+        cxl_unref(ctx);
+        return -1;
+    }
+
+    // Validate the command response
+    int out_size = cxl_cmd_get_out_size(cmd);
+    if (out_size < 0) {
+        fprintf(stderr, "Failed to get output size\n");
+        cxl_cmd_unref(cmd);
+        cxl_unref(ctx);
+        return -1;
+    }
+
+    printf("Output payload: ");
+    for (int i = 0; i < out_size; i++) {
+        printf("%02x ", output_payload[i]);
+    }
+    printf("\n");
+
+    // Clean up
+    cxl_cmd_unref(cmd);
+    cxl_unref(ctx);
+
+    return 0;
 }

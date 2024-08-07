@@ -1,5 +1,6 @@
 #ifndef INFO_STATUS_H
 #define INFO_STATUS_H
+#pragma once
 #include<stdio.h>
 #include<stdint.h>
 #include<string.h>
@@ -11,6 +12,40 @@
 #define GET_RESPONSE_MESSAGE_LIMIT_OPCODE 0x0003
 #define SET_RESPONSE_MESSAGE_LIMIT_OPCODE 0x0004
 #define REQUEST_ABORT_BACKGROUND_OPERATION_OPCODE 0x0005
+
+#define GET_SUPPORTED_LOGS_OPCODE 0x0400
+
+// Enum for UUID types
+typedef enum {
+    UUID_COMMAND_EFFECTS_LOG,
+    UUID_VENDOR_DEBUG_LOG,
+    UUID_COMPONENT_STATE_DUMP_LOG,
+    UUID_DDR5_ERROR_CHECK_SCRUB_LOG,
+    UUID_MEDIA_TEST_CAPABILITY_LOG,
+    UUID_MEDIA_TEST_RESULTS_SHORT_LOG,
+    UUID_MEDIA_TEST_RESULTS_LONG_LOG,
+    UUID_TYPE_COUNT  // This will give the number of UUID types
+} uuid_type_t;
+
+extern const uint8_t uuid_array[UUID_TYPE_COUNT][16];
+
+// Define the UUID structure
+typedef struct {
+    uint8_t uuid[16];
+} uuid_t;
+
+// Define the structure for Get Supported Logs Supported Log Entry
+typedef struct {
+    uuid_t log_identifier;  // UUID representing the log
+    uint32_t log_size;      // Maximum number of bytes of log data
+} supported_log_entry_t;
+
+// Define the structure for Get Supported Logs Output Payload
+typedef struct {
+    uint16_t number_of_supported_log_entries;  // Number of Supported Log Entries
+    uint8_t reserved[6];                       // Reserved
+    supported_log_entry_t *supported_log_entries;  // Pointer to the array of supported log entries
+} get_supported_logs_output_payload_t;
 
 
 typedef struct {

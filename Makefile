@@ -1,6 +1,6 @@
 CC := gcc
 CFLAGS := -Wall -Wextra -g -D_GNU_SOURCE -fPIC
-LDFLAGS := -lpci -lpciaccess
+LDFLAGS := -lpci -lpciaccess -lcxl
 
 SRCS := main.c
 OBJS := $(SRCS:.c=.o)
